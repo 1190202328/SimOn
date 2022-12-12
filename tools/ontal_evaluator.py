@@ -32,7 +32,7 @@ def prob2actionness(classes, num_class=21, threshold=0.3):
 
 def multi_class_action_grouping_single(all_probls, k_consecutive=6,
                                        current_video_name=None,
-                                       fps_file='/data/thumos14_feat/fps_info.pkl',
+                                       fps_file='data/thumos14_feat/fps_info.pkl',
                                        num_class=20):
     fps_data = mmcv.load(fps_file)
 
