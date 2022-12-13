@@ -50,7 +50,7 @@ def focal_loss(input, target, criterion,
     loss = alpha_t * loss
 
     C = input.shape[-1]
-    mask = torch.zeros((input.shape[0]//num_history, num_history)).to(input)
+    mask = torch.zeros((input.shape[0] // num_history, num_history)).to(input)
     mask[:, -1] = 1.0
 
     mask[is_starts.view(-1), :] = 1.0
@@ -59,7 +59,7 @@ def focal_loss(input, target, criterion,
     padding_inds = target.sum(-1) < 0
     mask[padding_inds, :] = 0.0
 
-    return (loss*mask).sum()/(mask.sum())
+    return (loss * mask).sum() / (mask.sum())
 
 
 def clean_output(all_probs, all_classes, all_video_names):
@@ -106,14 +106,20 @@ def train_one_epoch(model: torch.nn.Module,
 
         history_probs = [0.0]
 
+        # print(all_video_camera_inputs.shape)
+        # print(length_of_video)
+        # # torch.Size([256, 128, 4096]) [B, T, C]
+        # # 128
+        # raise Exception
+
         # 3. train model with sequential data
         for idx in range(length_of_video):
             # construct batch
             camera_inputs, class_h_target, is_starts \
                 = data_loader.dataset.prepare_training_data(
-                    idx,
-                    all_video_camera_inputs,
-                    all_video_class_h_target)
+                idx,
+                all_video_camera_inputs,
+                all_video_class_h_target)
 
             camera_inputs = camera_inputs.to(device)
 
@@ -121,23 +127,43 @@ def train_one_epoch(model: torch.nn.Module,
 
             is_starts = is_starts.to(device).reshape(-1)
 
+            # print(camera_inputs.shape)
+            # print(class_h_target.shape)
+            # print(is_starts.shape)
+            # # torch.Size([256, 2, 4096]) [B, T_history+1[填充的假特征], C]
+            # # torch.Size([256, 2, 22]) [B, T_history+1[填充的假特征], num_class]
+            # # torch.Size([256]) 是否是开始帧【之前预测的帧少于history_desision的那些帧】
+            # # T_history->1[0号特征],2[0,1号特征],4,5,6,7,8,8,8,8,...
+
             # log prob
             # do not use p_t in the model, so there is no gt while infer
             if is_starts.sum() > 0:
+                # 是开始的帧，认为history_probs是均匀分布的
                 history_probs[0] = class_h_target[:,
-                                                  0:1][..., :-1]  # start token, not gt
+                                   0:1][..., :-1]  # start token, not gt
 
-            if len(history_probs) > max_length-1:
+            if len(history_probs) > max_length - 1:
+                # 相当于维护了一个固定大小的memory bank；当个数大于max_length时，将最开始的弹出去
                 history_probs.pop(0)
 
             pre_probs = torch.cat(history_probs, 1).to(device)
 
+            # print(pre_probs.shape)
+            # # torch.Size([256, 1, 21]) [B, T_history, num_class]
+
             # 4. forward model
             cls_scores = model(camera_inputs, is_starts, pre_probs)
 
+            # print(cls_scores.shape)
+            # # torch.Size([256, 1, 22])
+
             # log output
             dummy_cls = cls_scores[:, -1:][..., :-1].sigmoid().detach()
-            dummy_cls[..., 0] = 0.0  # dummy, not use
+
+            # print(dummy_cls.shape)
+            # # torch.Size([256, 1, 21])
+
+            dummy_cls[..., 0] = 0.0  # dummy, not use；做了填充，0号位置为假的数据
             history_probs.append(dummy_cls)
 
             # through away past target
@@ -146,9 +172,9 @@ def train_one_epoch(model: torch.nn.Module,
             # save output
             for _idx in range(len(class_h_target)):
                 all_probs.append(
-                    dummy_cls[_idx].cpu().numpy().reshape(num_class-1))
+                    dummy_cls[_idx].cpu().numpy().reshape(num_class - 1))
                 all_classes.append(
-                    class_h_target[:, -1:, :-1][_idx].cpu().numpy().reshape(num_class-1).astype(np.float32))
+                    class_h_target[:, -1:, :-1][_idx].cpu().numpy().reshape(num_class - 1).astype(np.float32))
             all_video_names.extend(video_name_lists)
 
             assert len(all_video_names) == len(all_probs)
@@ -192,7 +218,7 @@ def train_one_epoch(model: torch.nn.Module,
             cls_name = all_class_name[i]
             print('{}: {:.4f}'.format(cls_name, ap))
         stats = {k: meter.global_avg for k,
-                 meter in metric_logger.meters.items()}
+                                         meter in metric_logger.meters.items()}
         print(stats)
 
         print("Averaged stats:", metric_logger)
@@ -232,9 +258,9 @@ def evaluate(model: torch.nn.Module,
             # construct batch
             camera_inputs, class_h_target, is_starts \
                 = data_loader.dataset.prepare_training_data(
-                    idx,
-                    all_video_camera_inputs,
-                    all_video_class_h_target)
+                idx,
+                all_video_camera_inputs,
+                all_video_class_h_target)
 
             camera_inputs = camera_inputs.to(device)
 
@@ -247,9 +273,9 @@ def evaluate(model: torch.nn.Module,
 
             if is_starts.sum() > 0:
                 history_probs[0] = class_h_target[:,
-                                                  0:1][..., :-1]  # start token, not gt
+                                   0:1][..., :-1]  # start token, not gt
 
-            if len(history_probs) > max_length-1:
+            if len(history_probs) > max_length - 1:
                 history_probs.pop(0)
 
             pre_probs = torch.cat(history_probs, 1).to(device)
@@ -268,15 +294,15 @@ def evaluate(model: torch.nn.Module,
             for _idx, _vid in enumerate(video_indices):
                 if _vid in all_probs_dict:
                     all_probs_dict[_vid].append(
-                        dummy_cls[_idx].cpu().numpy().reshape(num_class-1))
+                        dummy_cls[_idx].cpu().numpy().reshape(num_class - 1))
                     all_classes_dict[_vid].append(
-                        class_h_target[:, -1:, :-1][_idx].cpu().numpy().reshape(num_class-1).astype(np.float32))
+                        class_h_target[:, -1:, :-1][_idx].cpu().numpy().reshape(num_class - 1).astype(np.float32))
                     all_video_names_dict[_vid].append(video_name_lists[_idx])
                 else:
                     all_probs_dict[_vid] = [
-                        dummy_cls[_idx].cpu().numpy().reshape(num_class-1), ]
+                        dummy_cls[_idx].cpu().numpy().reshape(num_class - 1), ]
                     all_classes_dict[_vid] = [
-                        class_h_target[:, -1:, :-1][_idx].cpu().numpy().reshape(num_class-1).astype(np.float32), ]
+                        class_h_target[:, -1:, :-1][_idx].cpu().numpy().reshape(num_class - 1).astype(np.float32), ]
                     all_video_names_dict[_vid] = [video_name_lists[_idx], ]
 
             assert len(all_video_names_dict) == len(all_probs_dict)
@@ -330,7 +356,7 @@ def evaluate(model: torch.nn.Module,
         cls_name = all_class_name[i]
         print('{}: {:.4f}'.format(cls_name, ap))
     stats = {k: meter.global_avg for k,
-             meter in metric_logger.meters.items()}
+                                     meter in metric_logger.meters.items()}
     model.train()
 
     return stats

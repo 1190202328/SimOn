@@ -5,7 +5,6 @@ import numpy as np
 from tqdm import tqdm
 import torch.utils.data as data
 
-
 START_INDEX = 2
 
 
@@ -36,6 +35,11 @@ class TRNTHUMOSDataLayer(data.Dataset):
             open(osp.join(self.pickle_root, f'thumos_{self.subnet}_anno_multiclass.pickle'), 'rb'))
 
         self.sessions = sorted(list(set(target_all.keys())))
+
+        # print(self.sessions)
+        # # 视频名称
+        # raise Exception
+
         feature_file = osp.join(
             self.pickle_root, f'thumos_all_feature_{self.subnet}_V3.pickle')
         if osp.exists(feature_file):
@@ -58,12 +62,12 @@ class TRNTHUMOSDataLayer(data.Dataset):
             # pad feature and target
             if len(video_feature) % self.stride != 0:
                 tmp_data = np.zeros(
-                    (self.stride-len(video_feature) % self.stride, args.dim_feature))
+                    (self.stride - len(video_feature) % self.stride, args.dim_feature))
                 video_feature = np.concatenate(
                     (video_feature, tmp_data), axis=0)
                 # extend gt annotation
                 tmp_data_anno = np.full(
-                    (self.stride-len(video_feature) % self.stride, target.shape[-1]), -1)
+                    (self.stride - len(video_feature) % self.stride, target.shape[-1]), -1)
                 target = np.concatenate((target, tmp_data_anno), axis=0)
 
             num_snippet = video_feature.shape[0]
@@ -77,6 +81,7 @@ class TRNTHUMOSDataLayer(data.Dataset):
             windows_start = [i * self.stride for i in range(num_windows)]
 
             if num_snippet < self.num_videoframes:
+                # 视频长度不够一个窗口
                 windows_start = [0]
                 # Add on a bunch of zero data if there aren't enough windows.
                 tmp_data = np.zeros(
@@ -89,7 +94,9 @@ class TRNTHUMOSDataLayer(data.Dataset):
                     (self.num_videoframes - num_snippet, target.shape[-1]), -1)
                 target = np.concatenate((target, tmp_data_anno), axis=0)
 
-            elif num_snippet - windows_start[-1] - self.num_videoframes > int(self.num_videoframes / self.skip_videoframes):
+            elif num_snippet - windows_start[-1] - self.num_videoframes > int(
+                    self.num_videoframes / self.skip_videoframes):
+                # TODO 最后一个窗口？似乎跑不到这里来
                 windows_start.append(num_snippet - self.num_videoframes)
 
             for start in windows_start:
@@ -97,13 +104,13 @@ class TRNTHUMOSDataLayer(data.Dataset):
                 obser_data = np.array(obser_data).astype(np.float32)
                 obser_target = target[start:start + self.num_videoframes]
                 self.inputs.append([obser_data, obser_target, session, start])
-                self.track_session.append([session]*self.num_videoframes)
+                self.track_session.append([session] * self.num_videoframes)
                 self.track_start.append(start)
                 self.track_indices.append(
-                    np.arange(start, start+self.num_videoframes))
-
+                    np.arange(start, start + self.num_videoframes))
+        # 设置默认类别概率是平均的
         self.sos_cls = torch.full(
-            (1, self.numclass), 1/(self.numclass-1)).to(torch.float32)
+            (1, self.numclass), 1 / (self.numclass - 1)).to(torch.float32)
 
     def __getitem__(self, index):
         return self.prepare_imgs(index)
@@ -119,11 +126,13 @@ class TRNTHUMOSDataLayer(data.Dataset):
     def prepare_training_data(self, index,
                               all_video_camera_inputs,
                               all_video_class_h_target):
+        # k个已经预测得到的结果的序号
         taken_decision_indices = np.arange(
-            max(0, index-self.history_desision-1), index+1)
+            max(0, index - self.history_desision - 1), index + 1)
 
         is_start = False
         if len(taken_decision_indices) < self.history_feature + 2:
+            # 如果已经预测出来的结果的个数小于8，则说明还处于开始阶段【已经得到的结果不足self.history_feature】
             is_start = True
 
         re_camera_inputs = all_video_camera_inputs[:, torch.from_numpy(
@@ -131,15 +140,25 @@ class TRNTHUMOSDataLayer(data.Dataset):
         re_class_h_target = all_video_class_h_target[:, torch.from_numpy(
             taken_decision_indices)]
 
+        # print(re_camera_inputs.shape)
+        # print(re_class_h_target.shape)
+        # # torch.Size([256, 2, 4096])
+        # # torch.Size([256, 2, 22])
+        # # shape=[B, len(taken_decision_indices), C]
+        # # 得到已经预测出来的结果【用导师制来进行监督，防止训练过程中有累计误差】
+
         if is_start:
+            # 已经得到的预测结果不足self.history_feature
+            # 在之前预测的结果之前填充一次【假的】预测
             re_camera_inputs = torch.cat(
-                (re_camera_inputs[:, 0:1], re_camera_inputs), 1)
+                (re_camera_inputs[:, 0:1], re_camera_inputs), 1)  # 重复一遍之前的预测的第一次的值
             # the first class is dummy and not used
             re_class_h_target = torch.cat((self.sos_cls[None].repeat(
                 len(re_class_h_target), 1, 1), re_class_h_target), 1)
+            # 在之前的预测的第一次的值concat上均匀分布的一次预测
 
         return (re_camera_inputs, re_class_h_target,
-                torch.tensor([is_start]*len(all_video_camera_inputs)))
+                torch.tensor([is_start] * len(all_video_camera_inputs)))
 
     def __len__(self):
         return len(self.inputs)

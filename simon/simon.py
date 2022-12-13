@@ -68,18 +68,30 @@ class SimOn(nn.Module):
 
         self.linear_encoding = nn.Linear(input_history_feature_dim, d_model)
 
-        self.linear_prob = nn.Linear(args.numclass-1, d_model)
+        self.linear_prob = nn.Linear(args.numclass - 1, d_model)
 
-        self.linear_encoding2 = nn.Linear(d_model*2, d_model)
+        self.linear_encoding2 = nn.Linear(d_model * 2, d_model)
 
     def forward(self,
                 camera_inputs,
                 is_starts,
                 probs):
+        # print(camera_inputs.shape)
+        # print(is_starts.shape)
+        # print(probs.shape)
+        # # torch.Size([256, 2, 4096])
+        # # torch.Size([256])
+        # # torch.Size([256, 1, 21])
+        # # ->
+        # # torch.Size([256, 8, 4096])
+        # # torch.Size([256])
+        # # torch.Size([256, 7, 21])
+
         camera_inputs = self.linear_encoding(camera_inputs)
         is_starts_num = is_starts.sum()
 
         if is_starts_num > 0:
+            # 处于开始阶段，将特征替换成embedding【因此之前随便加的假的特征失效】
             # start embedding E
             is_starts = is_starts.view(-1)
             feature_start_emb = self.feature_start_emb(
@@ -88,11 +100,13 @@ class SimOn(nn.Module):
                 feature_start_emb[None, None, -1]
 
         N, BA, C = camera_inputs.shape
+        # batch_size，history_length, channel
 
         # postional encoding PE
         camera_inputs = self.embed_positional_encoding(camera_inputs)
 
         queries = camera_inputs[:, -1:]
+        # 当前特征作为query
 
         past_frame_features = camera_inputs[:, :-1]
 
@@ -104,18 +118,39 @@ class SimOn(nn.Module):
         # concat ft and ct
         memory = torch.cat(
             (past_frame_features, prob_embded), -1).view(N,
-                                                         -1, prob_embded.shape[-1]*2)
+                                                         -1, prob_embded.shape[-1] * 2)
+        # 将之前帧的特征和预测出的类别概率分布concat到一起，作为memory
+
         # project to lower dimmension
         memory = self.linear_encoding2(memory)
-        
+
         # mask
         target_mask = self.generate_square_subsequent_mask(
             queries.size(1), queries.device)
-       
+
+        # print(target_mask)
+        # # tensor([[0.]], device='cuda:0')
+        # # TODO 似乎都是0，没有用上
+
+        # print(queries.shape)
+        # print(memory.shape)
+        # print(target_mask.shape)
+        # # torch.Size([256, 1, 256])
+        # # torch.Size([256, 1, 256])
+        # # torch.Size([1, 1])
+        # # ->
+        # # torch.Size([256, 1, 256])
+        # # torch.Size([256, 7, 256])
+        # # torch.Size([1, 1])
+        # # raise Exception
+
         # input transformer
         outs = self.transformer(queries, memory, target_mask)
         # predict score
-        
+
+        # print(outs.shape)
+        # # torch.Size([256, 1, 256])
+
         cls_outputs = self.generator(outs.view(N, 1, -1))
         return cls_outputs
 
@@ -123,6 +158,7 @@ class SimOn(nn.Module):
     def generate_square_subsequent_mask(sz, DEVICE):
         mask = (torch.triu(torch.ones((sz, sz), device=DEVICE))
                 == 1).transpose(0, 1)
+        # torch.triu：返回上三角矩阵
         mask = mask.float().masked_fill(mask == 0, float(
             '-inf')).masked_fill(mask == 1, float(0.0))
         return mask

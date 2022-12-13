@@ -10,4 +10,4 @@ python main.py \
   --history_desision 6 \
   --history_feature 6 \
   --epochs 17 --lr_drop 3 --gamma 0.5 \
-  --eval --resume "models/onal_sequence_thumos14_decoder_layer4_kv7/checkpoint0003.pth"
+  --eval --resume "models/onal_sequence_thumos14_decoder_layer4_kv7/checkpoint0012.pth"

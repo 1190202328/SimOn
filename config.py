@@ -31,7 +31,7 @@ def get_args_parser():
 
     # dataset parameters
     parser.add_argument('--pickle_root', type=str,
-                        default='/data/thumos14_feat')
+                        default='data/thumos14_feat')
     parser.add_argument('--train_num_videoframes', default=128, type=int)
     parser.add_argument('--train_stride', default=128, type=int)
     parser.add_argument('--test_num_videoframes', default=2048, type=int)

@@ -131,6 +131,7 @@ def main(args):
                 }, checkpoint_path)
 
         if epoch % 4 == 0:
+            print('start eval accuracy on testing set..............................')
             test_stats = evaluate(
                 model, criterior, data_loader_val, device,
                 logger, args, epoch, nprocs=utils.get_world_size())
