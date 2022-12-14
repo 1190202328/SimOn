@@ -48,40 +48,42 @@ def multi_class_action_grouping_single(all_probls, k_consecutive=6,
     prob_lists = {idx: [] for idx in range(num_class)}
     frame_count = 1
 
-    previous_classes = np.zeros((num_class, ))
-    is_starts = np.zeros((num_class, )) == 1.0
+    previous_classes = np.zeros((num_class,))
+    is_starts = np.zeros((num_class,)) == 1.0
     fps = fps_data[current_video_name]
 
     for idx in range(len(all_probls)):
         current_output = all_probls[idx]
         current_probs, current_classes = prob2actionness(
-            current_output, num_class=num_class+1)
+            current_output, num_class=num_class + 1)
 
         for class_indx in range(num_class):
             current_d = (class_indx in current_classes)
 
             if previous_classes[class_indx] == 0 and current_d == 1:
+                # 动作开始时刻
                 return_list_dicts[class_indx]['video-id'].append(
                     current_video_name)
-                start = (k_consecutive * (frame_count-1))/fps
+                start = (k_consecutive * (frame_count - 1)) / fps
                 return_list_dicts[class_indx]['t-start'].append(start)
                 is_starts[class_indx] = True
 
             if previous_classes[class_indx] == 1 and current_d == 0 \
                     or ((idx == len(all_probls) - 1) and current_d == 1):  # end of video
+                # 动作结束时刻
                 if ((idx == len(all_probls) - 1) and current_d == 1) and previous_classes[class_indx] == 0:
                     # clssification_list and prob_list are empty
                     clssification_lists[class_indx].append(
                         current_classes[current_classes == class_indx])
                     prob_lists[class_indx].append(
                         current_probs[current_classes == class_indx])
-                end = (k_consecutive * (frame_count-1))/fps
+                end = (k_consecutive * (frame_count - 1)) / fps
 
                 return_list_dicts[class_indx]['t-end'].append(end)
                 return_list_dicts[class_indx]['label'].append(
                     clssification_lists[class_indx][-1])
                 return_list_dicts[class_indx]['score'].append(
-                    sum(prob_lists[class_indx])/len(prob_lists[class_indx]))
+                    sum(prob_lists[class_indx]) / len(prob_lists[class_indx]))
 
                 # reset parameters if end of action in video
                 prob_lists[class_indx] = []
@@ -117,9 +119,9 @@ def multi_class_action_grouping_single(all_probls, k_consecutive=6,
         'score': score}
     # check len() of each element in return_dict, it must have same size
     all_keys = list(return_dict)
-    for idx in range(len(all_keys)-1):
+    for idx in range(len(all_keys) - 1):
         assert len(return_dict[all_keys[idx]]) == len(
-            return_dict[all_keys[idx+1]])
+            return_dict[all_keys[idx + 1]])
     return return_dict
 
 
@@ -143,6 +145,7 @@ def convert_oad2tal(all_probls, video_names, k_consecutive=6,
     for idx, video_name in enumerate(tqdm(unique_video_names)):
         if video_name == 'video_test_0001292':
             # follow https://github.com/happyharrycn/actionformer_release
+            # 忽略掉这个视频
             continue
 
         video_prob = all_probls_array[video_names_array == video_name]
@@ -158,9 +161,9 @@ def convert_oad2tal(all_probls, video_names, k_consecutive=6,
             return_dict[key].extend(val)
     # check len() of each element in return_dict, it must have same size
     all_keys = list(return_dict)
-    for idx in range(len(all_keys)-1):
+    for idx in range(len(all_keys) - 1):
         assert len(return_dict[all_keys[idx]]) == len(
-            return_dict[all_keys[idx+1]])
+            return_dict[all_keys[idx + 1]])
 
     return_dict['t-start'] = np.array(return_dict['t-start'])
     return_dict['t-end'] = np.array(return_dict['t-end'])
